@@ -32,7 +32,7 @@ class Riemann::Tools::Proc
 
   def linux_proc
     process = opts[:proc_regex]
-    found = `ps axo pid=,rss=,vsize=,state=,cputime=,lstart=,command= | grep '#{process}' | grep -v grep | grep -v riemann-proc`
+    found = `ps axo pid=,pcpu=,pmem=,rss=,vsize=,state=,cputime=,lstart=,command= | grep '#{process}' | grep -v grep | grep -v riemann-proc`
     running = found.count("\n")
     if running > @limits[:critical][:max] or running < @limits[:critical][:min]
       alert "proc count/#{process}", :critical, running, "process #{process} is running #{running} instances.\n"
@@ -50,11 +50,11 @@ class Riemann::Tools::Proc
     # value should be either process RSS, VSIZE, or 1 if running
     # state is always unknown for the moment
     #
-    ps_regex = /([0-9]+)[ ]+([0-9]+)[ ]+([0-9]+)[ ]+([A-Z])[ ]+([0-9:.]+)[ ]+[A-Za-z]{3}[ ]+([A-Za-z]{3}[ ]{1,2}[0-9]+ [0-9:]+ [0-9]+)[ ]+(.*)/
+    ps_regex = /([0-9]+)[ ]+([0-9]+\.[0-9])[ ]+([0-9]+\.[0-9])[ ]+([0-9]+)[ ]+([0-9]+)[ ]+([A-Z])[ ]+([0-9:.]+)[ ]+[A-Za-z]{3}[ ]+([A-Za-z]{3}[ ]{1,2}[0-9]+ [0-9:]+ [0-9]+)[ ]+(.*)/
     found.each_line do |line|
       m = ps_regex.match(line)
       if not m.nil?
-        pid, rss, vsize, state, cputime, start, command = m.captures
+        pid, pcpu, pmem, rss, vsize, state, cputime, start, command = m.captures
         start_s = DateTime.parse(start, "Mmm DD HH:MM:ss YYYY").to_time.to_i
         cputime_s = DateTime.parse(cputime, "%H:%M:%S")
         cputime_seconds = (cputime_s.hour * 3600) + (cputime_s.minute * 60) + cputime_s.second
@@ -72,6 +72,18 @@ class Riemann::Tools::Proc
         else
           state_s = "unknown"
         end
+        report(
+          :service => "proc #{pid}-#{start_s}/pcpu",
+          :state => state_s.to_s,
+          :metric => pcpu.to_f,
+          :description => command,
+        )
+        report(
+          :service => "proc #{pid}-#{start_s}/pmem",
+          :state => state_s.to_s,
+          :metric => pmem.to_f,
+          :description => command,
+        )
         report(
           :service => "proc #{pid}-#{start_s}/rss",
           :state => state_s.to_s,
